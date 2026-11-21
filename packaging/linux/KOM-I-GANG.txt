@@ -1,0 +1,21 @@
+LYDBOK-STACK FOR LINUX – KOM I GANG
+===================================
+
+1. Pakk ut og åpne en terminal i mappa:
+       unzip lydbok-stack-linux.zip && cd lydbok-stack
+
+2. Start:
+       ./start.sh
+
+   Første gang tilbyr skriptet å installere Docker, og kjører veiviseren.
+   Kjører Plex-stack allerede på maskinen, spør veiviseren om du vil bruke
+   nedlasterne derfra (anbefalt). Etterpå starter alt, og du ser at appene
+   settes opp automatisk.
+
+3. Lytt:        http://<maskinens-ip>:13378  eller appen «Audiobookshelf»
+   Dashboard:   http://<maskinens-ip>:3100
+
+Oppdatere senere:  ./oppdater.sh
+
+Hjemmeserver? Se linux/01-prepare-host.sh (ingen dvale, Docker og Tailscale)
+og linux/02-mount-disk.sh (monter disken fast). Alt står i README.md.

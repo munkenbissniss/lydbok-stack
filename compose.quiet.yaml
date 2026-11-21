@@ -1,0 +1,12 @@
+# Rolig modus: begrenser bakgrunnsapper så maskinen holder seg kjølig og stille.
+# Audiobookshelf begrenses ALDRI – avspilling påvirkes ikke.
+# cpus: 1.0 = én prosessortråd. cpu_shares: taper alltid mot avspilling ved travelhet.
+x-bg: &bg
+  cpu_shares: 256
+services:
+  bookshelf:    {<<: *bg, cpus: 1.0}
+  qbittorrent:  {<<: *bg, cpus: 1.0}
+  nzbget:       {<<: *bg, cpus: 1.0}
+  prowlarr:     {<<: *bg, cpus: 0.5}
+  flaresolverr: {<<: *bg, cpus: 0.5}
+  homepage:     {<<: *bg, cpus: 0.25}

@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lydbok-stack – din egen lydbokserver, satt opp av seg selv</title>
+<meta name="description" content="Audiobookshelf og Bookshelf på Docker, med automatisk oppsett. For Linux, macOS og Windows. Kan dele nedlasterne med Plex-stack.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,800;1,7..72,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#DCE4DE; --paper-2:#CFD9D2; --ink:#16242A; --muted:#55676A;
+  --cloth:#1F4A40; --cloth-2:#173A32; --foil:#E3B448; --ribbon:#8A3A5C;
+  --serif:"Literata",Georgia,"Times New Roman",serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 1.0625rem/1.6 var(--serif);
+  font-variant-numeric:oldstyle-nums proportional-nums;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--ribbon);outline-offset:3px;border-radius:4px}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:clamp(1.25rem,4vw,2.5rem)}
+code{font-family:inherit;font-weight:600;background:var(--paper-2);padding:.05em .35em;border-radius:4px}
+
+/* topp */
+.top{display:flex;align-items:center;justify-content:space-between;padding-block:1.4rem}
+.mark{font-weight:800;text-decoration:none;font-size:1.15rem;letter-spacing:-.01em}
+.mark span{font-weight:400;color:var(--muted);font-size:.85rem;margin-left:.35rem}
+.top nav{display:flex;gap:1.4rem}
+.top nav a{text-decoration:none;color:var(--muted)}
+.top nav a:hover{color:var(--ink)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(2rem,5vw,4.5rem);align-items:center;
+  padding-block:clamp(2rem,6vw,4.5rem) clamp(3rem,7vw,5.5rem)}
+h1{font-weight:800;font-size:clamp(2.4rem,5.4vw,4.1rem);line-height:1.04;letter-spacing:-.025em;margin:0 0 1.2rem;
+  font-variation-settings:"opsz" 72;max-width:13ch}
+.lede{font-size:1.25rem;color:var(--muted);max-width:34ch;margin:0 0 2rem}
+.actions{display:flex;flex-wrap:wrap;gap:1rem 1.6rem;align-items:center}
+.btn{display:inline-flex;align-items:baseline;gap:.5rem;background:var(--cloth);color:#F4EFE0;text-decoration:none;
+  font-weight:600;padding:.85rem 1.4rem;border-radius:999px}
+.btn:hover{background:var(--cloth-2)}
+.btn small{font-weight:400;opacity:.8}
+.quiet{color:var(--ink);text-underline-offset:4px}
+.meta{margin-top:1.6rem;color:var(--muted);font-size:.95rem}
+
+/* spilleren */
+.player{background:#F3F5F1;border-radius:18px;padding:1.4rem;box-shadow:0 1px 0 #fff inset,0 24px 50px -28px rgba(22,36,42,.45)}
+.np{display:grid;grid-template-columns:7.5rem 1fr;gap:1.2rem;align-items:center}
+.cover{aspect-ratio:2/3;border-radius:3px 7px 7px 3px;background:
+  linear-gradient(90deg,rgba(0,0,0,.28) 0 7%,rgba(255,255,255,.06) 7% 8.5%,transparent 8.5%),
+  repeating-linear-gradient(135deg,rgba(255,255,255,.025) 0 2px,transparent 2px 5px),var(--cloth);
+  color:var(--foil);display:flex;flex-direction:column;justify-content:flex-end;gap:.35rem;padding:1rem .7rem .8rem 1.1rem;
+  box-shadow:0 10px 18px -10px rgba(0,0,0,.5);position:relative}
+.cover b{font-weight:800;font-size:1.02rem;line-height:1.1}
+.cover i{font-style:italic;font-size:.72rem;opacity:.9}
+.cover::after{content:"";position:absolute;right:16%;top:-4px;width:9px;height:42%;background:var(--ribbon);
+  clip-path:polygon(0 0,100% 0,100% 100%,50% 86%,0 100%)}
+.np h2{margin:0;font-size:1.3rem;line-height:1.2}
+.np .by{color:var(--muted);margin:.15rem 0 .7rem}
+.now{min-height:3.2em;margin:0;font-size:.98rem}
+.scrub{margin:1.2rem 0 .3rem;height:6px;border-radius:3px;background:#D3DBD5;position:relative;overflow:hidden}
+.scrub .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--cloth);border-radius:3px}
+.scrub .tick{position:absolute;top:0;bottom:0;width:2px;background:#F3F5F1}
+.times{display:flex;justify-content:space-between;color:var(--muted);font-size:.85rem;font-variant-numeric:lining-nums tabular-nums}
+.controls{display:flex;align-items:center;justify-content:center;gap:1.1rem;margin:.6rem 0 1rem}
+.controls button{font:inherit;border:0;background:none;color:var(--ink);cursor:pointer;border-radius:999px}
+.skip{width:2.6rem;height:2.6rem;display:grid;place-items:center}
+.skip:hover,.speed:hover{background:var(--paper)}
+.play{width:3.6rem;height:3.6rem;display:grid;place-items:center;background:var(--cloth)!important;color:#F4EFE0!important}
+.play:hover{background:var(--cloth-2)!important}
+.speed{font-weight:600!important;font-size:.9rem!important;padding:.4rem .6rem;font-variant-numeric:lining-nums tabular-nums}
+.chapters{list-style:none;margin:0;padding:0;border-top:1px solid #D3DBD5}
+.chapters button{width:100%;display:grid;grid-template-columns:1.6rem 1fr auto;gap:.6rem;align-items:baseline;text-align:left;
+  font:inherit;font-size:.95rem;background:none;border:0;border-bottom:1px solid #E1E7E2;padding:.55rem .3rem;cursor:pointer;color:var(--ink)}
+.chapters button:hover{background:var(--paper)}
+.chapters .n{color:var(--muted);font-variant-numeric:lining-nums tabular-nums}
+.chapters .t{color:var(--muted);font-size:.85rem;font-variant-numeric:lining-nums tabular-nums}
+.chapters .on{font-weight:600}
+.chapters .on .n{color:var(--ribbon)}
+.chapters .done .n::before{content:"✓";color:var(--cloth)}
+.chapters .done .n span{display:none}
+
+/* seksjoner */
+section{padding-block:clamp(3rem,7vw,5rem)}
+h2.s{font-weight:800;font-size:clamp(1.8rem,3.4vw,2.5rem);letter-spacing:-.02em;line-height:1.1;margin:0 0 .8rem}
+.intro{color:var(--muted);max-width:58ch;margin:0 0 2.2rem;font-size:1.1rem}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:clamp(2rem,6vw,5rem)}
+
+/* innholdsfortegnelse */
+.toc{list-style:none;margin:0;padding:0;max-width:44rem}
+.toc li{padding:.7rem 0}
+.toc .line{display:flex;align-items:baseline;gap:.5rem;font-weight:600;font-size:1.12rem}
+.toc .line::after{content:"";order:2;flex:1;border-bottom:2px dotted #9DB0A6;transform:translateY(-.3em)}
+.toc .p{order:3;font-weight:400;font-variant-numeric:lining-nums tabular-nums}
+.toc .d{color:var(--muted);margin:.15rem 0 0;max-width:52ch}
+.toc .alt{color:var(--muted);font-weight:400;font-size:.9rem;margin-left:.3rem}
+.part{font-style:italic;color:var(--muted);margin:2rem 0 .3rem}
+.part:first-child{margin-top:0}
+
+/* sammen med Plex */
+.together{background:var(--cloth);color:#E9EFEA}
+.together h2.s{color:#F4EFE0}
+.together .intro{color:#B9CCC3}
+.together ul{margin:0;padding-left:1.2rem}
+.together li{margin:.45rem 0}
+.together li::marker{color:var(--foil)}
+.together aside{border-left:3px solid var(--foil);padding-left:1.2rem;color:#B9CCC3}
+
+/* nedlasting */
+.oss{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem}
+.os{background:#F3F5F1;border-radius:14px;padding:1.4rem 1.4rem 1.6rem;display:flex;flex-direction:column}
+.os.mine{outline:2px solid var(--cloth)}
+.os h3{margin:0 0 .2rem;font-size:1.35rem}
+.os .you{color:var(--ribbon);font-style:italic;font-size:.95rem;margin:0 0 .4rem}
+.os p{margin:.3rem 0 1.2rem;color:var(--muted)}
+.os .dl-link{margin-top:auto;align-self:flex-start}
+.os .need{font-size:.9rem;margin:1rem 0 0}
+.os:not(.mine) .btn{background:transparent;color:var(--cloth);box-shadow:inset 0 0 0 2px var(--cloth)}
+.os:not(.mine) .btn:hover{background:var(--paper)}
+
+/* selv */
+.self{list-style:none;padding:0;margin:0;display:grid;gap:1.6rem;max-width:46rem}
+.self li{display:grid;grid-template-columns:auto 1fr;gap:1rem}
+.self svg{margin-top:.25rem;color:var(--ribbon)}
+.self b{display:block}
+
+footer{border-top:1px solid #C3CFC7;padding-block:2.2rem 3rem;color:var(--muted);font-size:.95rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:1rem 2rem;justify-content:space-between}
+footer p{margin:0;max-width:60ch}
+
+@media (max-width:900px){
+  .hero{grid-template-columns:1fr}
+  .cols{grid-template-columns:1fr}
+  .oss{grid-template-columns:1fr}
+}
+@media (max-width:520px){
+  .hide-s{display:none}
+  .np{grid-template-columns:5.5rem 1fr}
+  .player{padding:1.1rem}
+  .toc .line{font-size:1.02rem}
+}
+</style>
+</head>
+<body>
+
+<header class="wrap top">
+  <a class="mark" href="#">Lydbok-stack<span id="ver"></span></a>
+  <nav>
+    <a href="#innhold" class="hide-s">Innhold</a>
+    <a href="#plex" class="hide-s">Med Plex-stack</a>
+    <a href="#last-ned">Last ned</a>
+    <a class="repo-link" href="#">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>Ditt eget lydbokbibliotek, satt opp av seg selv.</h1>
+      <p class="lede">Lydbøker og podkaster på mobilen og i nettleseren, og nye bøker som hentes når forfatterne dine gir ut noe.</p>
+      <div class="actions">
+        <a class="btn" id="primary" href="#last-ned">Last ned <small id="primary-os"></small></a>
+        <a class="quiet" href="#last-ned">Andre systemer</a>
+      </div>
+      <p class="meta">Linux, macOS og Windows. Gratis og åpen kildekode.</p>
+    </div>
+
+    <div class="player" aria-label="Eksempel: oppsettet fortalt som en lydbok">
+      <div class="np">
+        <div class="cover" aria-hidden="true"><b>Oppsettet</b><i>Lydbok-stack</i></div>
+        <div>
+          <h2>Oppsettet</h2>
+          <p class="by">lest av autooppsettet</p>
+          <p class="now" id="now" aria-live="polite">Trykk play for å høre hvordan alt settes opp.</p>
+        </div>
+      </div>
+      <div class="scrub" aria-hidden="true"><div class="fill" id="fill"></div></div>
+      <div class="times"><span id="pos">0:00</span><span id="left">−15:20</span></div>
+      <div class="controls">
+        <button class="skip" id="back" aria-label="Forrige kapittel">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>
+        </button>
+        <button class="play" id="play" aria-label="Spill av">
+          <svg id="ico" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="skip" id="fwd" aria-label="Neste kapittel">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>
+        </button>
+        <button class="speed" id="speed" aria-label="Avspillingshastighet">1,0×</button>
+      </div>
+      <ol class="chapters" id="chapters"></ol>
+    </div>
+  </div>
+
+  <section id="innhold">
+    <div class="wrap">
+      <h2 class="s">Innhold</h2>
+      <p class="intro">Alt kjører i Docker på én maskin. Tallet til høyre er porten du åpner i nettleseren, for eksempel <code>http://maskinen:13378</code>.</p>
+      <ol class="toc">
+        <li class="part">Del én: lytte</li>
+        <li><div class="line"><span>Audiobookshelf</span><span class="p">13378</span></div>
+          <p class="d">Lydbøker og podkaster. Husker hvor du er på tvers av mobil, nettbrett og nettleser, med apper for iPhone og Android.</p></li>
+        <li><div class="line"><span>Dashboard</span><span class="p">3100</span></div>
+          <p class="d">Alle appene på én side, med det som lastes ned og hvor mye plass som er igjen.</p></li>
+        <li class="part">Del to: samle</li>
+        <li><div class="line"><span>Bookshelf</span><span class="p">8787</span></div>
+          <p class="d">Følg forfattere og serier. Nye lydbøker hentes, får ryddige mappenavn og dukker opp i Audiobookshelf. Videreføringen av Readarr.</p></li>
+        <li><div class="line"><span>Prowlarr<span class="alt">eller Plex-stackens</span></span><span class="p">9697</span></div>
+          <p class="d">Indekserne dine på ett sted. De som har lydbøker, kobles til Bookshelf automatisk.</p></li>
+        <li><div class="line"><span>qBittorrent bak VPN</span><span class="p">8090</span></div>
+          <p class="d">Torrent med killswitch. Faller VPN-en ut, stopper trafikken.</p></li>
+        <li><div class="line"><span>NZBGet</span><span class="p">6790</span></div>
+          <p class="d">Usenet, valgfritt.</p></li>
+        <li class="part">Etterord</li>
+        <li><div class="line"><span>Kjøling</span><span class="p">3011</span></div>
+          <p class="d">Følger med på temperaturen og roer ned nedlastingen når maskinen blir varm. Avspillingen begrenses aldri.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="plex" class="together">
+    <div class="wrap cols">
+      <div>
+        <h2 class="s">Har du Plex-stack fra før?</h2>
+        <p class="intro">Veiviseren finner den og spør om lydbøkene skal bruke nedlasterne som allerede kjører.</p>
+        <aside>Plex-stack må kjøre før du starter lydbok-stacken. Bruker den en nettverksdeling, bruker lydbøkene den samme.</aside>
+      </div>
+      <ul>
+        <li>Ingen ekstra VPN, qBittorrent eller NZBGet, så maskinen bruker mindre minne.</li>
+        <li>Lydbøkene havner på samme disk som filmene, og nedlastinger flyttes inn uten å kopieres.</li>
+        <li>Indeksere du legger til i Prowlarr, brukes for både serier, filmer og lydbøker.</li>
+        <li>Samme brukernavn og passord overalt. Veiviseren finner det selv.</li>
+        <li>I Plex-stack legges bare kategorien for lydbøker og Bookshelf i Prowlarr til. Ingenting annet endres.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="last-ned">
+    <div class="wrap">
+      <h2 class="s">Last ned</h2>
+      <p class="intro">Pakkene inneholder det samme. Forskjellen er hvordan du starter dem.</p>
+      <div class="oss">
+        <div class="os" data-os="linux">
+          <h3>Linux</h3><p class="you" hidden>Ditt system</p>
+          <p>Kjør <code>./start.sh</code>. Skriptet tilbyr å installere Docker, og har med hjelp til å gjøre en gammel PC eller Mac til hjemmeserver.</p>
+          <a class="btn dl-link" data-file="lydbok-stack-linux.zip" href="#">Last ned for Linux</a>
+        </div>
+        <div class="os" data-os="macos">
+          <h3>macOS</h3><p class="you" hidden>Ditt system</p>
+          <p>Dobbeltklikk <code>Start.command</code>. Første gang: høyreklikk og velg Åpne.</p>
+          <a class="btn dl-link" data-file="lydbok-stack-macos.zip" href="#">Last ned for macOS</a>
+          <p class="need">Trenger OrbStack eller Docker Desktop.</p>
+        </div>
+        <div class="os" data-os="windows">
+          <h3>Windows</h3><p class="you" hidden>Ditt system</p>
+          <p>Dobbeltklikk <code>Start.bat</code>. Første gang: «Mer informasjon» og «Kjør likevel».</p>
+          <a class="btn dl-link" data-file="lydbok-stack-windows.zip" href="#">Last ned for Windows</a>
+          <p class="need">Trenger Docker Desktop.</p>
+        </div>
+      </div>
+      <p class="meta">Alle versjoner og endringer: <a class="releases-link" href="#">utgivelser på GitHub</a>.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2 class="s">Det du gjør selv</h2>
+      <p class="intro">Resten står i oppsummeringen når autooppsettet er ferdig.</p>
+      <ul class="self">
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2h12v20l-6-5-6 5z"/></svg>
+          <div><b>Legg til en indekser med lydbøker i Prowlarr.</b>Den kobles automatisk til Bookshelf.</div></li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2h12v20l-6-5-6 5z"/></svg>
+          <div><b>Lag en bruker til hver i familien i Audiobookshelf.</b>Da får alle sin egen fremdrift og egne bokmerker.</div></li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2h12v20l-6-5-6 5z"/></svg>
+          <div><b>Installer appen Audiobookshelf på mobilen.</b>Logg inn med adressen til maskinen, for eksempel <code>http://192.168.1.20:13378</code>.</div></li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Du er selv ansvarlig for hva du laster ned. Bruk stacken til bøker du har rett til. Ikke tilknyttet Audible, Audiobookshelf eller Plex Inc.</p>
+    <p>MIT-lisens · <a class="repo-link" href="#">Kildekoden på GitHub</a></p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Finn repoet: data-repo, ellers fra GitHub Pages-adressen (brukernavn.github.io/repo).
+  var repo = document.documentElement.getAttribute("data-repo");
+  if (!repo && /\.github\.io$/.test(location.hostname)) {
+    var owner = location.hostname.split(".")[0];
+    var first = location.pathname.split("/").filter(Boolean)[0];
+    repo = owner + "/" + (first && !/\.html?$/.test(first) ? first : owner + ".github.io");
+  }
+  var base = repo ? "https://github.com/" + repo : null;
+  function set(sel, url) { document.querySelectorAll(sel).forEach(function (a) { if (url) a.href = url; }); }
+  set(".repo-link", base);
+  set(".releases-link", base && base + "/releases");
+  document.querySelectorAll(".dl-link").forEach(function (a) {
+    if (base) a.href = base + "/releases/latest/download/" + a.dataset.file;
+  });
+
+  // Gjett operativsystem og fremhev riktig pakke.
+  var ua = navigator.userAgent, os = /Windows/i.test(ua) ? "windows" : /Mac OS X|Macintosh/i.test(ua) ? "macos" : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? "linux" : null;
+  var names = { linux: "for Linux", macos: "for macOS", windows: "for Windows" };
+  if (os) {
+    var card = document.querySelector('.os[data-os="' + os + '"]');
+    card.classList.add("mine");
+    card.querySelector(".you").hidden = false;
+    card.parentNode.prepend(card);
+    document.getElementById("primary-os").textContent = names[os];
+    if (base) document.getElementById("primary").href = card.querySelector(".dl-link").href;
+  }
+
+  // Nyeste versjon fra GitHub (stille hvis det ikke går).
+  if (repo && window.fetch) {
+    fetch("https://api.github.com/repos/" + repo + "/releases/latest")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j && j.tag_name) document.getElementById("ver").textContent = j.tag_name; })
+      .catch(function () {});
+  }
+
+  // Spilleren: oppsettet fortalt som kapitler i en lydbok.
+  var CH = [
+    ["Veiviseren", 0, "Du svarer på noen spørsmål: hvor bøkene skal ligge, et passord og VPN-en."],
+    ["Plex-stack funnet", 192, "Nedlasterne som allerede kjører, tas i bruk. Ingen ekstra VPN."],
+    ["Audiobookshelf", 340, "Administratoren lages, og bibliotekene Lydbøker og Podkaster settes opp på norsk."],
+    ["Bookshelf", 545, "Rotmappe, lydbokprofil, ryddige mappenavn og nedlastingsklienter."],
+    ["Prowlarr", 750, "Indekserne med lydbøker kobles til Bookshelf."],
+    ["Ferdig", 898, "Åpne appen på mobilen og trykk play. God lytting."]
+  ];
+  var TOTAL = 920, SPEEDS = [1, 1.5, 2], speed = 0, pos = 0, playing = false, last = null;
+  var $ = function (id) { return document.getElementById(id); };
+  var list = $("chapters"), fill = $("fill"), scrub = fill.parentNode;
+  function fmt(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + ("0" + s % 60).slice(-2); }
+  CH.forEach(function (c, i) {
+    var li = document.createElement("li"), b = document.createElement("button");
+    b.innerHTML = '<span class="n"><span>' + (i + 1) + '</span></span><span>' + c[0] + '</span><span class="t">' + fmt(c[1]) + '</span>';
+    b.addEventListener("click", function () { pos = c[1]; render(); if (!playing) toggle(); });
+    li.appendChild(b); list.appendChild(li);
+    if (i) { var t = document.createElement("i"); t.className = "tick"; t.style.left = (c[1] / TOTAL * 100) + "%"; scrub.appendChild(t); }
+  });
+  function current() { var k = 0; CH.forEach(function (c, i) { if (pos >= c[1]) k = i; }); return k; }
+  var shown = -1;
+  function render() {
+    var k = current();
+    fill.style.width = (pos / TOTAL * 100) + "%";
+    $("pos").textContent = fmt(pos); $("left").textContent = "−" + fmt(TOTAL - pos);
+    list.querySelectorAll("button").forEach(function (b, i) {
+      b.classList.toggle("on", i === k && (playing || pos > 0));
+      b.classList.toggle("done", i < k);
+      b.setAttribute("aria-current", i === k ? "true" : "false");
+    });
+    if ((playing || pos > 0) && k !== shown) { $("now").textContent = CH[k][2]; shown = k; }
+  }
+  function frame(t) {
+    if (!playing) return;
+    if (last !== null) pos += (t - last) / 1000 * 70 * SPEEDS[speed];   // 15 minutter på rundt 13 sekunder
+    last = t;
+    if (pos >= TOTAL) { pos = TOTAL; render(); toggle(); return; }
+    render(); requestAnimationFrame(frame);
+  }
+  function toggle() {
+    playing = !playing; last = null;
+    if (playing && pos >= TOTAL) pos = 0;
+    $("play").setAttribute("aria-label", playing ? "Pause" : "Spill av");
+    $("ico").innerHTML = playing ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+    render();
+    if (playing) requestAnimationFrame(frame);
+  }
+  $("play").addEventListener("click", toggle);
+  $("back").addEventListener("click", function () { var k = current(); pos = CH[pos - CH[k][1] < 20 && k ? k - 1 : k][1]; render(); });
+  $("fwd").addEventListener("click", function () { var k = current(); pos = k < CH.length - 1 ? CH[k + 1][1] : TOTAL; render(); });
+  $("speed").addEventListener("click", function () {
+    speed = (speed + 1) % SPEEDS.length;
+    this.textContent = SPEEDS[speed].toFixed(1).replace(".", ",") + "×";
+  });
+  render();
+})();
+</script>
+</body>
+</html>

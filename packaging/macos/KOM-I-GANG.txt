@@ -1,0 +1,19 @@
+LYDBOK-STACK FOR MAC – KOM I GANG
+=================================
+
+1. Installer OrbStack (https://orbstack.dev) eller Docker Desktop, og start den.
+
+2. Dobbeltklikk Start.command.
+   Første gang sier macOS kanskje at filen er fra en ukjent utvikler:
+   høyreklikk Start.command → Åpne → Åpne. Det trengs bare én gang.
+   Sier den at filen ikke kan åpnes, kjør dette i Terminal (i mappa):
+       chmod +x *.command
+
+3. Veiviseren stiller noen spørsmål, så starter alt av seg selv.
+   Kjører Plex-stack allerede på Macen, kan lydbøkene bruke nedlasterne derfra.
+
+4. Lytt:        http://localhost:13378  eller appen «Audiobookshelf»
+   Dashboard:   http://localhost:3100
+
+Oppdatere senere: dobbeltklikk Oppdater.command.
+Mer hjelp: README.md

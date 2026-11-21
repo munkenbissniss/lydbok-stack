@@ -1,0 +1,260 @@
+# =============================================================================
+#  Lydbok-stack – automatisk lydbokserver på Docker (Linux, macOS, Windows)
+#
+#  1) docker compose run --rm setup     ← veiviser, lager .env (kjøres én gang)
+#  2) docker compose up -d              ← starter alt
+#  3) docker compose logs -f autoconfig ← se at alt settes opp automatisk
+#
+#  Alle ${...} hentes fra .env. Overstyringsfiler (compose.*.yaml) og
+#  profiler velges av veiviseren via COMPOSE_FILE og COMPOSE_PROFILES.
+#
+#  Porter er valgt så stacken kan kjøre ved siden av Plex-stack på samme maskin.
+# =============================================================================
+name: lydbok-stack
+
+x-env: &env
+  PUID: ${PUID:-1000}
+  PGID: ${PGID:-1000}
+  TZ: ${TZ:-Europe/Oslo}
+
+x-svc: &svc
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  depends_on:
+    init:
+      condition: service_completed_successfully
+
+x-tool: &tool
+  image: python:3.13-alpine
+  restart: "no"
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Engangsjobber
+  # ---------------------------------------------------------------------------
+  setup:                 # Veiviser:  docker compose run --rm setup
+    <<: *tool
+    profiles: ["setup"]
+    network_mode: host
+    stdin_open: true
+    tty: true
+    working_dir: /stack
+    command: ["python", "-u", "/stack/tools/setup.py"]
+    volumes:
+      - ./:/stack
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  init:                  # Lager mapper med riktige eiere før noe annet starter
+    <<: *tool
+    command: ["python", "-u", "/stack/tools/init.py"]
+    environment:
+      <<: *env
+      AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-}
+      PODCASTS_DIR: ${PODCASTS_DIR:-}
+      PODCASTS: ${PODCASTS:-1}
+    volumes:
+      - ./tools:/stack/tools:ro
+      - ./homepage:/stack/homepage:ro
+      - ${CONFIG_ROOT:-./config}:/config
+      - ${DATA_ROOT:-./media}:/data
+
+  autoconfig:            # Setter opp og kobler sammen appene via API-ene deres
+    <<: *tool
+    command: ["python", "-u", "/stack/tools/autoconfig.py"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      audiobookshelf: {condition: service_started}
+      bookshelf: {condition: service_started}
+      homepage: {condition: service_started}
+      prowlarr: {condition: service_started, required: false}
+      qbittorrent: {condition: service_started, required: false}
+      nzbget: {condition: service_started, required: false}
+    environment:
+      <<: *env
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      LAN_IP: ${LAN_IP:-}
+      DASHBOARD_HOST: ${DASHBOARD_HOST:-localhost}
+      SHARED: ${SHARED:-0}
+      QBIT_URL: ${QBIT_URL:-http://gluetun:8080}
+      NZBGET_URL: ${NZBGET_URL:-}
+      PROWLARR_URL: ${PROWLARR_URL:-http://prowlarr:9696}
+      AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-}
+      PODCASTS_DIR: ${PODCASTS_DIR:-}
+      PODCASTS: ${PODCASTS:-1}
+      ABS_PROVIDER: ${ABS_PROVIDER:-audible}
+      ABS_LANGUAGE: ${ABS_LANGUAGE:-no}
+      COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+      USENET_HOST: ${USENET_HOST:-}
+      USENET_PORT: ${USENET_PORT:-563}
+      USENET_USER: ${USENET_USER:-}
+      USENET_PASSWORD: ${USENET_PASSWORD:-}
+      USENET_CONNECTIONS: ${USENET_CONNECTIONS:-20}
+    volumes:
+      - ./tools:/stack/tools:ro
+      - ${CONFIG_ROOT:-./config}:/config
+      - ${DATA_ROOT:-./media}:/data:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # ---------------------------------------------------------------------------
+  # Lytting og bibliotek
+  # ---------------------------------------------------------------------------
+  audiobookshelf:        # Lydbok- og podkastserver med apper for iPhone og Android
+    <<: *svc
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    user: ${PUID:-1000}:${PGID:-1000}
+    environment:
+      TZ: ${TZ:-Europe/Oslo}
+      PORT: 13378
+    volumes:
+      - ${CONFIG_ROOT:-./config}/audiobookshelf/config:/config
+      - ${CONFIG_ROOT:-./config}/audiobookshelf/metadata:/metadata
+      - ${DATA_ROOT:-./media}:/data
+    ports:
+      - 13378:13378
+
+  bookshelf:             # Følger forfattere og serier, henter lydbøker automatisk (Readarr-arvtaker)
+    <<: *svc
+    image: ghcr.io/pennydreadful/bookshelf:hardcover
+    container_name: bookshelf
+    environment: *env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/bookshelf:/config
+      - ${DATA_ROOT:-./media}:/data
+    ports:
+      - 8787:8787
+
+  # ---------------------------------------------------------------------------
+  # Nedlasting (profil «nedlasting»). Hoppes over når Plex-stackens brukes.
+  # ---------------------------------------------------------------------------
+  gluetun:               # VPN-tunnel med killswitch for qBittorrent
+    image: qmcgaw/gluetun:latest
+    container_name: lydbok-gluetun
+    profiles: ["nedlasting"]
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TZ: ${TZ:-Europe/Oslo}
+      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER:-protonvpn}
+      VPN_TYPE: ${VPN_TYPE:-wireguard}
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:-}
+      WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:-}
+      OPENVPN_USER: ${OPENVPN_USER:-}
+      OPENVPN_PASSWORD: ${OPENVPN_PASSWORD:-}
+      SERVER_COUNTRIES: ${VPN_SERVER_COUNTRIES:-}
+      VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-off}
+    healthcheck:
+      start_period: 90s
+      interval: 15s
+      timeout: 10s
+      retries: 4
+    volumes:
+      - ${CONFIG_ROOT:-./config}/gluetun:/gluetun
+    ports:
+      - 8090:8080
+      - 6891:6891
+      - 6891:6891/udp
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: lydbok-qbittorrent
+    profiles: ["nedlasting"]
+    restart: unless-stopped
+    network_mode: service:gluetun
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      gluetun:
+        condition: service_started   # trygt: gluetuns brannmur slipper ingenting ut før VPN-en er oppe
+    environment:
+      <<: *env
+      WEBUI_PORT: 8080
+      TORRENTING_PORT: 6891
+    volumes:
+      - ${CONFIG_ROOT:-./config}/qbittorrent:/config
+      - ${DATA_ROOT:-./media}:/data
+
+  nzbget:                # Usenet (profil «usenet»)
+    <<: *svc
+    profiles: ["usenet"]
+    image: nzbgetcom/nzbget:latest
+    container_name: lydbok-nzbget
+    environment:
+      <<: *env
+      NZBGET_USER: ${ADMIN_USER:-nzbget}
+      NZBGET_PASS: ${ADMIN_PASSWORD:-tegbzn6789}
+    volumes:
+      - ${CONFIG_ROOT:-./config}/nzbget:/config
+      - ${DATA_ROOT:-./media}:/data
+    ports:
+      - 6790:6789
+
+  prowlarr:              # Indeksere – synkes automatisk til Bookshelf
+    <<: *svc
+    profiles: ["nedlasting"]
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: lydbok-prowlarr
+    environment: *env
+    volumes:
+      - ${CONFIG_ROOT:-./config}/prowlarr:/config
+    ports:
+      - 9697:9696
+
+  flaresolverr:
+    <<: *svc
+    profiles: ["nedlasting"]
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: lydbok-flaresolverr
+    environment:
+      TZ: ${TZ:-Europe/Oslo}
+      LOG_LEVEL: info
+
+  # ---------------------------------------------------------------------------
+  # Dashboard og kjøling
+  # ---------------------------------------------------------------------------
+  homepage:
+    <<: *svc
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: lydbok-homepage
+    environment:
+      TZ: ${TZ:-Europe/Oslo}
+      HOMEPAGE_ALLOWED_HOSTS: ${HOMEPAGE_ALLOWED_HOSTS:-*}
+    volumes:
+      - ${CONFIG_ROOT:-./config}/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${DATA_ROOT:-./media}:/mediadisk:ro
+    ports:
+      - 3100:3000
+
+  kjoling:               # Viser belastning og roer ned nedlastingen når maskinen er varm (profil «kjoling»)
+    <<: *svc
+    profiles: ["kjoling"]
+    image: python:3.13-alpine
+    container_name: lydbok-kjoling
+    command: ["python", "-u", "/stack/tools/throttle.py"]
+    environment:
+      TZ: ${TZ:-Europe/Oslo}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      QBIT_URL: ${QBIT_URL:-http://gluetun:8080}
+      NZBGET_URL: ${NZBGET_URL:-}
+      THROTTLE_CONTAINERS: bookshelf,lydbok-qbittorrent,lydbok-nzbget,lydbok-prowlarr,lydbok-flaresolverr,lydbok-homepage
+      HOT_TEMP: ${HOT_TEMP:-85}
+      COOL_TEMP: ${COOL_TEMP:-72}
+      HIGH_LOAD: ${HIGH_LOAD:-90}
+      LOW_LOAD: ${LOW_LOAD:-50}
+      CALM_CPUS: ${CALM_CPUS:-0.3}
+    volumes:
+      - ./tools:/stack/tools:ro
+      - ${CONFIG_ROOT:-./config}:/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 3011:3011
